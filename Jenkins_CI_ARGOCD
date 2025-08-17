@@ -1,0 +1,61 @@
+pipeline {
+    agent any
+
+
+    stages {
+        stage('Git Clone') {
+            steps {
+                git branch: 'main', credentialsId: 'github-creds', url: 'https://github.com/rks007/k8s-kind-voting-app.git'
+            }
+        }
+
+        stage('Build and push') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker-creds') {
+                        dir('vote') {
+                            COMMIT_SHA = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                        
+                            sh "docker build -t rks007/argocd:${COMMIT_SHA} ."
+                            sh "docker push rks007/argocd:${COMMIT_SHA}"
+                        }
+                    }
+                    
+                }
+            }
+        }
+
+        stage('Update vote deployment.yaml') {
+            steps {
+                script {
+                    COMMIT_SHA = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    IMAGE_TAG = "rks007/argocd:${COMMIT_SHA}"
+                    sh """
+                        sed -i 's|image: .*|image: ${IMAGE_TAG}|' k8s-specifications/vote-deployment.yaml
+                    """
+                    echo "✅ Updated vote-deployment.yaml with image: ${IMAGE_TAG}"
+                }
+            }
+        }
+        stage('Commit & Push Changes') {
+    steps {
+        script {
+            COMMIT_SHA = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+
+            withCredentials([usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+                sh """
+                    git config user.email "ci-bot@jenkins.com"
+                    git config user.name "Jenkins CI"
+                    
+                    git remote set-url origin https://${GIT_USER}:${GIT_TOKEN}@github.com/rks007/k8s-kind-voting-app.git
+                    
+                    git add k8s-specifications/vote-deployment.yaml
+                    git commit -m "Update vote image to rks007/argocd:${COMMIT_SHA}" || echo "No changes to commit"
+                    git push origin main
+                """
+            }
+        }
+    }
+}
+    }
+}
