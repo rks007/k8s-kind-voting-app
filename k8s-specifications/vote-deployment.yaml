@@ -15,7 +15,7 @@ spec:
         app: vote
     spec:
       containers:
-      - image: rks007/argocd:44030d9
+      - image: rks007/argocd:bdb85f7
         name: vote
         ports:
         - containerPort: 80
